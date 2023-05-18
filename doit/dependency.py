@@ -15,6 +15,7 @@ import dbm
 
 class DatabaseException(Exception):
     """Exception class for whatever backend exception"""
+
     pass
 
 
@@ -30,7 +31,7 @@ def get_file_md5(path):
     @param path: (string) file path
     @return: (string) md5
     """
-    with open(path, 'rb') as file_data:
+    with open(path, "rb") as file_data:
         md5 = hashlib.md5()
         block_size = 128 * md5.block_size
         while True:
@@ -41,8 +42,9 @@ def get_file_md5(path):
     return md5.hexdigest()
 
 
-class JSONCodec():
+class JSONCodec:
     """default implmentation for codec used to save individual task's data"""
+
     def __init__(self):
         self.encoder = json.JSONEncoder()
         self.decoder = json.JSONDecoder()
@@ -52,7 +54,6 @@ class JSONCodec():
 
     def decode(self, data):
         return self.decoder.decode(data)
-
 
 
 class JsonDB(object):
@@ -69,16 +70,18 @@ class JsonDB(object):
 
     def _load(self):
         """load db content from file"""
-        db_file = open(self.name, 'r')
+        db_file = open(self.name, "r")
         try:
             try:
                 return self.codec.decode(db_file.read())
             except ValueError as error:
                 # file contains corrupted json data
                 fname = os.path.abspath(self.name)
-                msg = (f"{error.args[0]}\nInvalid JSON data in {fname}\n"
-                       "To fix this problem, you can just remove the "
-                       "corrupted file, a new one will be generated.\n")
+                msg = (
+                    f"{error.args[0]}\nInvalid JSON data in {fname}\n"
+                    "To fix this problem, you can just remove the "
+                    "corrupted file, a new one will be generated.\n"
+                )
                 error.args = (msg,)
                 raise DatabaseException(msg)
         finally:
@@ -87,7 +90,7 @@ class JsonDB(object):
     def dump(self):
         """save DB content in file"""
         try:
-            db_file = open(self.name, 'w')
+            db_file = open(self.name, "w")
             db_file.write(self.codec.encode(self._db))
         finally:
             db_file.close()
@@ -98,7 +101,6 @@ class JsonDB(object):
             self._db[task_id] = {}
         self._db[task_id][dependency] = value
 
-
     def get(self, task_id, dependency):
         """Get value stored in the DB.
 
@@ -107,11 +109,16 @@ class JsonDB(object):
         if task_id in self._db:
             return self._db[task_id].get(dependency, None)
 
+    def tasks(self):
+        """Get tuple of task_id's stored in the DB.
+
+        @return: (tuple) tuple of string task_id's
+        """
+        return tuple(self._db.keys())
 
     def in_(self, task_id):
         """@return bool if task_id is in DB"""
         return task_id in self._db
-
 
     def remove(self, task_id):
         """remove saved dependencies from DB for taskId"""
@@ -126,7 +133,7 @@ class JsonDB(object):
 def get_dbm_module(mod_name):
     if mod_name:
         return importlib.import_module(mod_name)
-    return importlib.import_module('dbm')  # use system default
+    return importlib.import_module("dbm")  # use system default
 
 
 class DbmDB(object):
@@ -145,7 +152,8 @@ class DbmDB(object):
     :ivar dict _db: items with python-dict as value
     :ivar set dirty: id of modified tasks
     """
-    DBM_CONTENT_ERROR_MSG = 'db type could not be determined'
+
+    DBM_CONTENT_ERROR_MSG = "db type could not be determined"
 
     def __init__(self, name, codec, *, module_name=None):
         """Open/create a DB file"""
@@ -153,18 +161,19 @@ class DbmDB(object):
         self.codec = codec
         self.module = get_dbm_module(module_name)
         try:
-            self._dbm = self.module.open(self.name, 'c')
+            self._dbm = self.module.open(self.name, "c")
         except dbm.error as exception:
             message = str(exception)
             if message == self.DBM_CONTENT_ERROR_MSG:
                 # When a corrupted/old format database is found
                 # suggest the user to just remove the file
                 new_message = (
-                    'Dependencies file in %(filename)s seems to use '
-                    'an old format or is corrupted.\n'
-                    'To fix the issue you can just remove the database file(s) '
-                    'and a new one will be generated.'
-                    % {'filename': repr(self.name)})
+                    "Dependencies file in %(filename)s seems to use "
+                    "an old format or is corrupted.\n"
+                    "To fix the issue you can just remove the database file(s) "
+                    "and a new one will be generated."
+                    % {"filename": repr(self.name)}
+                )
                 raise DatabaseException(new_message)
             else:
                 # Re-raise any other exceptions
@@ -179,14 +188,12 @@ class DbmDB(object):
             self._dbm[task_id] = self.codec.encode(self._db[task_id])
         self._dbm.close()
 
-
     def set(self, task_id, dependency, value):
         """Store value in the DB."""
         if task_id not in self._db:
             self._db[task_id] = {}
         self._db[task_id][dependency] = value
         self.dirty.add(task_id)
-
 
     def _in_dbm(self, key):
         """
@@ -195,8 +202,7 @@ class DbmDB(object):
 
          for get()/set() key is convert to bytes but not for 'in'
         """
-        return key.encode('utf-8') in self._dbm
-
+        return key.encode("utf-8") in self._dbm
 
     def get(self, task_id, dependency):
         """Get value stored in the DB.
@@ -211,14 +217,17 @@ class DbmDB(object):
                 task_data = self._dbm[task_id]
             except KeyError:
                 return
-            self._db[task_id] = self.codec.decode(task_data.decode('utf-8'))
+            self._db[task_id] = self.codec.decode(task_data.decode("utf-8"))
             return self._db[task_id].get(dependency, None)
 
+    def tasks(self):
+        db_tasks = [k.decode() for k in self._dbm.keys()]
+        cache_tasks = [k for k in self._db.keys()]
+        return tuple(set(db_tasks + cache_tasks))
 
     def in_(self, task_id):
         """@return bool if task_id is in DB"""
         return self._in_dbm(task_id) or task_id in self.dirty
-
 
     def remove(self, task_id):
         """remove saved dependencies from DB for taskId"""
@@ -229,19 +238,17 @@ class DbmDB(object):
         if task_id in self.dirty:
             self.dirty.remove(task_id)
 
-
     def remove_all(self):
         """remove saved dependencies from DB for all tasks"""
         self._db = {}
         self._dbm.close()
         del self._dbm
-        self._dbm = self.module.open(self.name, 'n')
+        self._dbm = self.module.open(self.name, "n")
         self.dirty = set()
 
 
-
 class SqliteDB(object):
-    """ sqlite3 json backend """
+    """sqlite3 json backend"""
 
     def __init__(self, name, codec, *, module_name=None):
         self.name = name
@@ -255,14 +262,16 @@ class SqliteDB(object):
 
         # Import sqlite here so it's only imported when required
         import sqlite3
+
         def dict_factory(cursor, row):
             """convert row to dict"""
             data = {}
             for idx, col in enumerate(cursor.description):
                 data[col[0]] = row[idx]
             return data
+
         def converter(data):
-            return self.codec.decode(data.decode('utf-8'))
+            return self.codec.decode(data.decode("utf-8"))
 
         sqlite3.register_adapter(list, self.codec.encode)
         sqlite3.register_adapter(dict, self.codec.encode)
@@ -270,7 +279,8 @@ class SqliteDB(object):
         conn = sqlite3.connect(
             name,
             detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
-            isolation_level='DEFERRED')
+            isolation_level="DEFERRED",
+        )
         conn.row_factory = dict_factory
         sqlscript = """
             create table if not exists doit (
@@ -281,12 +291,13 @@ class SqliteDB(object):
             conn.execute(sqlscript)
         except sqlite3.DatabaseError as exception:
             new_message = (
-                'Dependencies file in %(filename)s seems to use '
-                'an bad format or is corrupted.\n'
-                'To fix the issue you can just remove the database file(s) '
-                'and a new one will be generated.'
-                'Original error: %(msg)s'
-                % {'filename': repr(name), 'msg': str(exception)})
+                "Dependencies file in %(filename)s seems to use "
+                "an bad format or is corrupted.\n"
+                "To fix the issue you can just remove the database file(s) "
+                "and a new one will be generated."
+                "Original error: %(msg)s"
+                % {"filename": repr(name), "msg": str(exception)}
+            )
             raise DatabaseException(new_message)
         return conn
 
@@ -302,9 +313,10 @@ class SqliteDB(object):
             return data.get(dependency, None)
 
     def _get_task_data(self, task_id):
-        data = self._conn.execute('select task_data from doit where task_id=?',
-                                  (task_id,)).fetchone()
-        return data['task_data'] if data else {}
+        data = self._conn.execute(
+            "select task_data from doit where task_id=?", (task_id,)
+        ).fetchone()
+        return data["task_data"] if data else {}
 
     def set(self, task_id, dependency, value):
         """Store value in the DB."""
@@ -313,20 +325,30 @@ class SqliteDB(object):
         self._cache[task_id][dependency] = value
         self._dirty.add(task_id)
 
+    def tasks(self):
+        db_tasks = [
+            t["task_id"]
+            for t in self._conn.execute("select task_id from doit").fetchall()
+        ]
+        cache_tasks = [k for k in self._cache.keys()]
+        return tuple(set(db_tasks + cache_tasks))
 
     def in_(self, task_id):
         if task_id in self._cache:
             return True
-        if self._conn.execute('select task_id from doit where task_id=?',
-                              (task_id,)).fetchone():
+        if self._conn.execute(
+            "select task_id from doit where task_id=?", (task_id,)
+        ).fetchone():
             return True
         return False
 
     def dump(self):
         """save/close sqlite3 DB file"""
         for task_id in self._dirty:
-            self._conn.execute('insert or replace into doit values (?,?)',
-                               (task_id, self.codec.encode(self._cache[task_id])))
+            self._conn.execute(
+                "insert or replace into doit values (?,?)",
+                (task_id, self.codec.encode(self._cache[task_id])),
+            )
         self._conn.commit()
         self._conn.close()
         self._dirty = set()
@@ -337,11 +359,11 @@ class SqliteDB(object):
             del self._cache[task_id]
         if task_id in self._dirty:
             self._dirty.remove(task_id)
-        self._conn.execute('delete from doit where task_id=?', (task_id,))
+        self._conn.execute("delete from doit where task_id=?", (task_id,))
 
     def remove_all(self):
         """remove saved dependencies from DB for all task"""
-        self._conn.execute('delete from doit')
+        self._conn.execute("delete from doit")
         self._cache = {}
         self._dirty = set()
 
@@ -394,8 +416,7 @@ class MD5Checker(FileChangedChecker):
     """
 
     def check_modified(self, file_path, file_stat, state):
-        """Check if file in file_path is modified from previous "state".
-        """
+        """Check if file in file_path is modified from previous "state"."""
         timestamp, size, file_md5 = state
 
         # 1 - if timestamp is not modified file is the same
@@ -408,7 +429,6 @@ class MD5Checker(FileChangedChecker):
 
         # 3 - check md5
         return file_md5 != get_file_md5(file_path)
-
 
     def get_state(self, dep, current_state):
         timestamp = os.path.getmtime(dep)
@@ -433,8 +453,7 @@ class TimestampChecker(FileChangedChecker):
 
 
 # name of checkers class available
-CHECKERS = {'md5': MD5Checker,
-            'timestamp': TimestampChecker}
+CHECKERS = {"md5": MD5Checker, "timestamp": TimestampChecker}
 
 
 class DependencyStatus(object):
@@ -445,12 +464,12 @@ class DependencyStatus(object):
 
     def __init__(self, get_log):
         self.get_log = get_log
-        self.status = 'up-to-date'
+        self.status = "up-to-date"
         # save reason task is not up-to-date
         self.reasons = defaultdict(list)
         self.error_reason = None
 
-    def add_reason(self, reason, arg, status='run'):
+    def add_reason(self, reason, arg, status="run"):
         """sets state and append reason for not being up-to-date
         :return boolean: processing should be interrupted
         """
@@ -463,15 +482,14 @@ class DependencyStatus(object):
         """sets state and reason for not being up-to-date
         :return boolean: processing should be interrupted
         """
-        self.status = 'run'
+        self.status = "run"
         if self.get_log:
             self.reasons[reason] = arg
         return not self.get_log
 
     def get_error_message(self):
-        '''return str with error message'''
+        """return str with error message"""
         return self.error_reason
-
 
 
 class Dependency(object):
@@ -498,12 +516,21 @@ class Dependency(object):
     :ivar string name: filepath of the DB file
     :ivar bool _closed: DB was flushed to file
     """
-    def __init__(self, db_class, backend_name, checker_cls=MD5Checker,
-                 codec_cls=JSONCodec, module_name=None):
+
+    def __init__(
+        self,
+        db_class,
+        backend_name,
+        checker_cls=MD5Checker,
+        codec_cls=JSONCodec,
+        module_name=None,
+    ):
         self._closed = False
         self.checker = checker_cls()
         self.db_class = db_class
-        self.backend = db_class(backend_name, codec=codec_cls(), module_name=module_name)
+        self.backend = db_class(
+            backend_name, codec=codec_cls(), module_name=module_name
+        )
         self._set = self.backend.set
         self._get = self.backend.get
         self.remove = self.backend.remove
@@ -517,8 +544,14 @@ class Dependency(object):
             self.backend.dump()
             self._closed = True
 
-
     ####### task specific
+
+    def tasks(self):
+        """Fetch all tasks id's stored in the DB.
+
+        :return tuple: Tuple of task_id's
+        """
+        return self.backend.tasks()
 
     def save_success(self, task, result_hash=None):
         """save info after a task is successfully executed
@@ -538,21 +571,21 @@ class Dependency(object):
                 self._set(task.name, "result:", get_md5(task.result))
 
         # file-dep
-        self._set(task.name, 'checker:', self.checker.__class__.__name__)
+        self._set(task.name, "checker:", self.checker.__class__.__name__)
         for dep in task.file_dep:
             state = self.checker.get_state(dep, self._get(task.name, dep))
             if state is not None:
                 self._set(task.name, dep, state)
 
         # save list of file_deps
-        self._set(task.name, 'deps:', tuple(task.file_dep))
+        self._set(task.name, "deps:", tuple(task.file_dep))
 
     def get_values(self, task_name):
         """get all saved values from a task
 
         :return dict:
         """
-        values = self._get(task_name, '_values_:')
+        values = self._get(task_name, "_values_:")
         return values or {}
 
     def get_value(self, task_id, key_name):
@@ -575,7 +608,7 @@ class Dependency(object):
 
         :return (dict or md5sum):
         """
-        return self._get(task_name, 'result:')
+        return self._get(task_name, "result:")
 
     def remove_success(self, task):
         """remove saved info from task"""
@@ -583,7 +616,7 @@ class Dependency(object):
 
     def ignore(self, task):
         """mark task to be ignored"""
-        self._set(task.name, 'ignore:', '1')
+        self._set(task.name, "ignore:", "1")
 
     def status_is_ignore(self, task):
         """check if task is marked to be ignored"""
@@ -614,7 +647,7 @@ class Dependency(object):
         uptodate_result_list = []
         for utd, utd_args, utd_kwargs in task.uptodate:
             # if parameter is a callable
-            if hasattr(utd, '__call__'):
+            if hasattr(utd, "__call__"):
                 # FIXME control verbosity, check error messages
                 # 1) setup object with global info all tasks
                 if isinstance(utd, UptodateCalculator):
@@ -624,18 +657,23 @@ class Dependency(object):
                 spec_args = list(inspect.signature(utd).parameters.keys())
                 magic_args = []
                 for i, name in enumerate(spec_args):
-                    if i == 0 and name == 'task':
+                    if i == 0 and name == "task":
                         magic_args.append(task)
-                    elif i == 1 and name == 'values':
+                    elif i == 1 and name == "values":
                         magic_args.append(self.get_values(task.name))
                 args = magic_args + utd_args
                 # 3) call it and get result
                 uptodate_result = utd(*args, **utd_kwargs)
             elif isinstance(utd, str):
-                uptodate_result = subprocess.call(
-                    utd, shell=True,
-                    stderr=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL) == 0
+                uptodate_result = (
+                    subprocess.call(
+                        utd,
+                        shell=True,
+                        stderr=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                    )
+                    == 0
+                )
             # parameter is a value
             else:
                 uptodate_result = utd
@@ -646,46 +684,45 @@ class Dependency(object):
                 continue
             uptodate_result_list.append(uptodate_result)
             if not uptodate_result:
-                result.add_reason('uptodate_false', (utd, utd_args, utd_kwargs))
+                result.add_reason("uptodate_false", (utd, utd_args, utd_kwargs))
 
         # any uptodate check is false
-        if not get_log and result.status == 'run':
+        if not get_log and result.status == "run":
             return result
 
         # no dependencies means it is never up to date.
         if not (task.file_dep or uptodate_result_list):
-            if result.set_reason('has_no_dependencies', True):
+            if result.set_reason("has_no_dependencies", True):
                 return result
-
 
         # if target file is not there, task is not up to date
         for targ in task.targets:
             if not self.checker.exists(targ):
                 task.dep_changed = list(task.file_dep)
-                if result.add_reason('missing_target', targ):
+                if result.add_reason("missing_target", targ):
                     return result
 
         # check for modified file_dep checker
-        previous = self._get(task.name, 'checker:')
+        previous = self._get(task.name, "checker:")
         checker_name = self.checker.__class__.__name__
         if previous and previous != checker_name:
             task.dep_changed = list(task.file_dep)
             # remove all saved values otherwise they might be re-used by
             # some optimization on MD5Checker.get_state()
             self.remove(task.name)
-            if result.set_reason('checker_changed', (previous, checker_name)):
+            if result.set_reason("checker_changed", (previous, checker_name)):
                 return result
 
         # check for modified file_dep
-        previous = self._get(task.name, 'deps:')
+        previous = self._get(task.name, "deps:")
         previous_set = set(previous) if previous else None
         if previous_set and previous_set != task.file_dep:
             if get_log:
                 added_files = sorted(list(task.file_dep - previous_set))
                 removed_files = sorted(list(previous_set - task.file_dep))
-                result.set_reason('added_file_dep', added_files)
-                result.set_reason('removed_file_dep', removed_files)
-            result.status = 'run'
+                result.set_reason("added_file_dep", added_files)
+                result.set_reason("removed_file_dep", removed_files)
+            result.status = "run"
 
         # list of file_dep that changed
         check_modified = self.checker.check_modified
@@ -697,7 +734,7 @@ class Dependency(object):
             except self.checker.CheckerError:
                 error_msg = "Dependent file '{}' does not exist.".format(dep)
                 result.error_reason = error_msg.format(dep)
-                if result.add_reason('missing_file_dep', dep, 'error'):
+                if result.add_reason("missing_file_dep", dep, "error"):
                     return result
             else:
                 if state is None or check_modified(dep, file_stat, state):
@@ -705,17 +742,17 @@ class Dependency(object):
         task.dep_changed = changed
 
         if len(changed) > 0:
-            result.set_reason('changed_file_dep', changed)
+            result.set_reason("changed_file_dep", changed)
 
         return result
 
 
-
 #############
 
+
 class UptodateCalculator(object):
-    """Base class for 'uptodate' that need access to all tasks
-    """
+    """Base class for 'uptodate' that need access to all tasks"""
+
     def __init__(self):
         self.get_val = None  # Dependency._get
         self.tasks_dict = None  # dict with all tasks
@@ -726,7 +763,7 @@ class UptodateCalculator(object):
         self.tasks_dict = tasks_dict
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # inspect available DBM modules and used extensions
     import tempfile
     from pathlib import Path
@@ -734,14 +771,14 @@ if __name__ == '__main__':
 
     for name in dbm._names:
         with tempfile.TemporaryDirectory() as tmpdir:
-            print(f'# {name}')
+            print(f"# {name}")
             try:
-                mod = __import__(name, fromlist=['open'])
+                mod = __import__(name, fromlist=["open"])
             except ImportError:
-                print('NOT FOUND')
+                print("NOT FOUND")
                 continue
-            db = mod.open(f'{tmpdir}/test', 'c')
-            db['foo'] = 'bar'
+            db = mod.open(f"{tmpdir}/test", "c")
+            db["foo"] = "bar"
             db.close()
 
             for file in Path(tmpdir).iterdir():
